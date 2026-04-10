@@ -1,0 +1,99 @@
+{
+  "name": "InterviewSession",
+  "type": "object",
+  "properties": {
+    "user_name": {
+      "type": "string",
+      "title": "User Name"
+    },
+    "role": {
+      "type": "string",
+      "title": "Target Role"
+    },
+    "interview_type": {
+      "type": "string",
+      "title": "Interview Type",
+      "enum": [
+        "Technical",
+        "Behavioural",
+        "General"
+      ]
+    },
+    "difficulty": {
+      "type": "string",
+      "title": "Difficulty",
+      "enum": [
+        "Junior",
+        "Mid",
+        "Senior"
+      ]
+    },
+    "questions": {
+      "type": "array",
+      "title": "Questions",
+      "items": {
+        "type": "object",
+        "properties": {
+          "question": {
+            "type": "string"
+          },
+          "answer": {
+            "type": "string"
+          },
+          "score": {
+            "type": "number"
+          },
+          "feedback_good": {
+            "type": "string"
+          },
+          "feedback_improve": {
+            "type": "string"
+          },
+          "suggested_answer": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "overall_score": {
+      "type": "number",
+      "title": "Overall Score"
+    },
+    "strengths": {
+      "type": "array",
+      "title": "Strengths",
+      "items": {
+        "type": "string"
+      }
+    },
+    "improvements": {
+      "type": "array",
+      "title": "Areas to Improve",
+      "items": {
+        "type": "string"
+      }
+    },
+    "next_steps": {
+      "type": "array",
+      "title": "Next Steps",
+      "items": {
+        "type": "string"
+      }
+    },
+    "status": {
+      "type": "string",
+      "title": "Status",
+      "enum": [
+        "in_progress",
+        "completed"
+      ],
+      "default": "in_progress"
+    }
+  },
+  "required": [
+    "user_name",
+    "role",
+    "interview_type",
+    "difficulty"
+  ]
+}
