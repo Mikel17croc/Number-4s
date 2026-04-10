@@ -1,0 +1,165 @@
+import { motion, AnimatePresence } from "framer-motion";
+
+// South African cartoon human SVG avatars
+const PANELISTS = {
+  mel: {
+    name: "Mel",
+    role: "Lead Interviewer",
+    skinTone: "#8B5E3C",
+    hairColor: "#1a0a00",
+    hairStyle: "afro",
+    shirtColor: "#1e3a5f",
+    accentColor: "hsl(173 80% 50%)",
+  },
+  thabo: {
+    name: "Thabo",
+    role: "Technical Panel",
+    skinTone: "#5C3317",
+    hairColor: "#0d0500",
+    hairStyle: "low-cut",
+    shirtColor: "#2d1b69",
+    accentColor: "hsl(262 83% 65%)",
+  },
+  zanele: {
+    name: "Zanele",
+    role: "HR Panel",
+    skinTone: "#A0522D",
+    hairColor: "#1a0a00",
+    hairStyle: "braids",
+    shirtColor: "#1a3a2e",
+    accentColor: "hsl(340 82% 60%)",
+  },
+};
+
+function AvatarSVG({ panelist, expression, speaking, size = 120 }) {
+  const p = PANELISTS[panelist] || PANELISTS.mel;
+  const s = size;
+  const isThinking = expression === "thinking";
+  const isHappy = expression === "happy" || expression === "impressed" || expression === "encouraging";
+  const isConcerned = expression === "concerned";
+
+  // Mouth shape
+  const getMouth = () => {
+    if (speaking) return <ellipse cx={s * 0.5} cy={s * 0.62} rx={s * 0.07} ry={s * 0.04} fill="#1a0000" />;
+    if (isHappy) return <path d={`M${s*0.41},${s*0.60} Q${s*0.50},${s*0.67} ${s*0.59},${s*0.60}`} stroke="#1a0000" strokeWidth="2" fill="none" strokeLinecap="round" />;
+    if (isConcerned) return <path d={`M${s*0.41},${s*0.64} Q${s*0.50},${s*0.58} ${s*0.59},${s*0.64}`} stroke="#1a0000" strokeWidth="2" fill="none" strokeLinecap="round" />;
+    return <path d={`M${s*0.42},${s*0.62} L${s*0.58},${s*0.62}`} stroke="#1a0000" strokeWidth="2" strokeLinecap="round" />;
+  };
+
+  // Hair style
+  const getHair = () => {
+    if (p.hairStyle === "afro") {
+      return (
+        <g>
+          <ellipse cx={s*0.5} cy={s*0.28} rx={s*0.22} ry={s*0.20} fill={p.hairColor} />
+          <circle cx={s*0.30} cy={s*0.30} r={s*0.10} fill={p.hairColor} />
+          <circle cx={s*0.70} cy={s*0.30} r={s*0.10} fill={p.hairColor} />
+          <circle cx={s*0.50} cy={s*0.14} r={s*0.09} fill={p.hairColor} />
+        </g>
+      );
+    }
+    if (p.hairStyle === "braids") {
+      return (
+        <g>
+          <ellipse cx={s*0.5} cy={s*0.24} rx={s*0.18} ry={s*0.12} fill={p.hairColor} />
+          {[0.35, 0.42, 0.50, 0.58, 0.65].map((x, i) => (
+            <rect key={i} x={s*x - s*0.015} y={s*0.30} width={s*0.03} height={s*0.18} rx={s*0.015} fill={p.hairColor} />
+          ))}
+        </g>
+      );
+    }
+    // low-cut
+    return <ellipse cx={s*0.5} cy={s*0.26} rx={s*0.17} ry={s*0.10} fill={p.hairColor} />;
+  };
+
+  // Eye brow
+  const getEyebrow = (cx) => (
+    <path
+      d={`M${cx - s*0.045},${isThinking ? s*0.38 : s*0.36} Q${cx},${isThinking ? s*0.34 : s*0.33} ${cx + s*0.045},${isThinking ? s*0.38 : s*0.36}`}
+      stroke={p.hairColor} strokeWidth="1.5" fill="none" strokeLinecap="round"
+    />
+  );
+
+  return (
+    <svg width={s} height={s * 1.3} viewBox={`0 0 ${s} ${s * 1.3}`} xmlns="http://www.w3.org/2000/svg">
+      {/* Body / shirt */}
+      <ellipse cx={s*0.5} cy={s*1.15} rx={s*0.30} ry={s*0.22} fill={p.shirtColor} />
+      {/* Neck */}
+      <rect x={s*0.44} y={s*0.72} width={s*0.12} height={s*0.14} rx={s*0.04} fill={p.skinTone} />
+      {/* Head */}
+      <ellipse cx={s*0.5} cy={s*0.50} rx={s*0.20} ry={s*0.23} fill={p.skinTone} />
+      {/* Hair */}
+      {getHair()}
+      {/* Ears */}
+      <ellipse cx={s*0.29} cy={s*0.52} rx={s*0.04} ry={s*0.05} fill={p.skinTone} />
+      <ellipse cx={s*0.71} cy={s*0.52} rx={s*0.04} ry={s*0.05} fill={p.skinTone} />
+      {/* Eyebrows */}
+      {getEyebrow(s*0.40)}
+      {getEyebrow(s*0.60)}
+      {/* Eyes */}
+      <ellipse cx={s*0.40} cy={s*0.46} rx={s*0.045} ry={s*0.04} fill="white" />
+      <ellipse cx={s*0.60} cy={s*0.46} rx={s*0.045} ry={s*0.04} fill="white" />
+      <motion.circle
+        cx={s*0.40} cy={s*0.46} r={s*0.025} fill="#111"
+        animate={isThinking ? { cx: [s*0.40, s*0.42, s*0.40, s*0.38, s*0.40] } : {}}
+        transition={{ duration: 2, repeat: Infinity }}
+      />
+      <motion.circle
+        cx={s*0.60} cy={s*0.46} r={s*0.025} fill="#111"
+        animate={isThinking ? { cx: [s*0.60, s*0.62, s*0.60, s*0.58, s*0.60] } : {}}
+        transition={{ duration: 2, repeat: Infinity }}
+      />
+      {/* Eye shine */}
+      <circle cx={s*0.41} cy={s*0.45} r={s*0.008} fill="white" opacity="0.8" />
+      <circle cx={s*0.61} cy={s*0.45} r={s*0.008} fill="white" opacity="0.8" />
+      {/* Nose */}
+      <path d={`M${s*0.48},${s*0.52} L${s*0.46},${s*0.58} L${s*0.54},${s*0.58}`} stroke={p.skinTone === "#A0522D" ? "#7a3a1a" : "#5a2e0a"} strokeWidth="1.2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      {/* Mouth */}
+      {getMouth()}
+    </svg>
+  );
+}
+
+export default function Avatar({ expression = "neutral", speaking = false, size = "lg", panelist = "mel", showLabel = true }) {
+  const p = PANELISTS[panelist] || PANELISTS.mel;
+  const svgSize = size === "lg" ? 110 : size === "md" ? 70 : 50;
+  const containerSize = size === "lg" ? "w-36 h-44 md:w-44 md:h-52" : size === "md" ? "w-24 h-28" : "w-16 h-20";
+
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <motion.div
+        className={`${containerSize} relative rounded-2xl flex items-center justify-center overflow-hidden`}
+        style={{ background: `radial-gradient(ellipse at top, ${p.accentColor}22, transparent 70%), hsl(222 44% 11%)`, border: `1.5px solid ${p.accentColor}44` }}
+        animate={speaking ? { scale: [1, 1.015, 1] } : { scale: 1 }}
+        transition={speaking ? { duration: 0.7, repeat: Infinity } : {}}
+      >
+        <AvatarSVG panelist={panelist} expression={expression} speaking={speaking} size={svgSize} />
+        {/* Speaking pulse ring */}
+        {speaking && (
+          <motion.div
+            className="absolute inset-0 rounded-2xl"
+            style={{ border: `2px solid ${p.accentColor}60` }}
+            animate={{ opacity: [0.3, 0.8, 0.3] }}
+            transition={{ duration: 1, repeat: Infinity }}
+          />
+        )}
+      </motion.div>
+      {showLabel && (
+        <div className="text-center">
+          <div className="flex items-center gap-1.5 justify-center">
+            <motion.div
+              className="w-1.5 h-1.5 rounded-full"
+              style={{ backgroundColor: speaking ? p.accentColor : "hsl(215 20% 40%)" }}
+              animate={speaking ? { scale: [1, 1.4, 1] } : {}}
+              transition={{ duration: 0.6, repeat: Infinity }}
+            />
+            <span className="text-sm font-semibold text-foreground">{p.name}</span>
+          </div>
+          <span className="text-[10px] text-muted-foreground">{p.role}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export { PANELISTS };
