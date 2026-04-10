@@ -1,0 +1,339 @@
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Send, Mic, MicOff, ArrowRight, Loader2 } from "lucide-react";
+import { base44 } from "@/api/base44Client";
+import Timer from "../components/Timer";
+import SpeechBubble from "../components/SpeechBubble";
+import FeedbackCard from "../components/FeedbackCard";
+import PanelRow, { PANEL_ORDER } from "../components/PanelRow";
+
+const TOTAL_QUESTIONS = 5;
+
+// SA-flavoured panel intros
+const PANEL_INTROS = {
+  mel: (name) => `Sawubona ${name}! I'm Mel, your lead interviewer today, eish — we've got a lekker panel lined up for you! We'll fire ${TOTAL_QUESTIONS} questions at you, just be yourself, sho? Let's vibe!`,
+  thabo: "Howzit! I'm Thabo — I'll be covering the technical side. Don't stress, we're all chommies here. Just show us what you know, sharp!",
+  zanele: "Hello and welcome! I'm Zanele, I'll be asking the people-side questions. Relax, just be yourself and we'll have a lekker session!",
+};
+
+export default function Interview() {
+  const navigate = useNavigate();
+  const params = new URLSearchParams(window.location.search);
+  const userName = params.get("name") || "Candidate";
+  const role = params.get("role") || "Developer";
+  const interviewType = params.get("type") || "Technical";
+  const difficulty = params.get("difficulty") || "Junior";
+
+  const [currentQ, setCurrentQ] = useState(0);
+  const [phase, setPhase] = useState("greeting");
+  const [messages, setMessages] = useState([]);
+  const [answer, setAnswer] = useState("");
+  const [feedback, setFeedback] = useState(null);
+  const [allResults, setAllResults] = useState([]);
+  const [isListening, setIsListening] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [timerRunning, setTimerRunning] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [activePanelist, setActivePanelist] = useState("mel");
+  const [greetStep, setGreetStep] = useState(0);
+  const recognitionRef = useRef(null);
+  const chatEndRef = useRef(null);
+
+  const scrollToBottom = () => chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+
+  useEffect(() => { scrollToBottom(); }, [messages, feedback]);
+
+  const speak = useCallback((text) => {
+    if (!window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 0.92;
+    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onend = () => setIsSpeaking(false);
+    window.speechSynthesis.speak(utterance);
+  }, []);
+
+  const addMessage = (panelist, text, type = "ai") => {
+    setMessages((prev) => [...prev, { panelist, text, type, id: Date.now() + Math.random() }]);
+  };
+
+  // Greeting sequence
+  useEffect(() => {
+    const greet = async () => {
+      const melText = PANEL_INTROS.mel(userName);
+      setActivePanelist("mel");
+      addMessage("mel", melText);
+      speak(melText);
+      await new Promise((r) => setTimeout(r, 4500));
+
+      setActivePanelist("thabo");
+      addMessage("thabo", PANEL_INTROS.thabo);
+      speak(PANEL_INTROS.thabo);
+      await new Promise((r) => setTimeout(r, 3500));
+
+      setActivePanelist("zanele");
+      addMessage("zanele", PANEL_INTROS.zanele);
+      speak(PANEL_INTROS.zanele);
+      await new Promise((r) => setTimeout(r, 3500));
+
+      generateQuestion(0);
+    };
+    greet();
+    return () => window.speechSynthesis?.cancel();
+  }, []);
+
+  const getPanelist = (index) => PANEL_ORDER[index % PANEL_ORDER.length];
+
+  const generateQuestion = async (questionIndex) => {
+    setLoading(true);
+    setPhase("asking");
+    setAnswer("");
+    setFeedback(null);
+    const panelist = getPanelist(questionIndex);
+    setActivePanelist(panelist);
+
+    const panelistNames = { mel: "Mel", thabo: "Thabo", zanele: "Zanele" };
+    const pName = panelistNames[panelist];
+
+    const res = await base44.integrations.Core.InvokeLLM({
+      prompt: "You are " + pName + ", a South African interviewer on a panel interview. Generate ONE " + interviewType + " interview question for a " + difficulty + "-level " + role + " candidate. This is question " + (questionIndex + 1) + " of " + TOTAL_QUESTIONS + ". Use South African English naturally, sprinkle in SA slang where it fits (e.g. eish, lekker, sharp, sho, howzit, yoh, just now) but keep it professional. Start with a short intro like '" + pName + " here -' then ask the question. Return ONLY the question text, nothing else.",
+    });
+
+    const q = typeof res === "string" ? res : JSON.stringify(res);
+    addMessage(panelist, q);
+    speak(q);
+    setTimerRunning(true);
+    setLoading(false);
+  };
+
+  const evaluateAnswer = async () => {
+    if (!answer.trim()) return;
+    setPhase("evaluating");
+    setTimerRunning(false);
+    setLoading(true);
+    setActivePanelist("mel");
+    window.speechSynthesis?.cancel();
+    addMessage("user", answer, "user");
+
+    const currentQuestion = messages.filter((m) => m.type === "ai").slice(-1)[0]?.text || "previous question";
+    const res = await base44.integrations.Core.InvokeLLM({
+      prompt: "You are Mel, a South African lead interviewer giving feedback in a panel interview. Question asked: " + currentQuestion + ". Candidate answer: " + answer + ". Role: " + role + ". Difficulty: " + difficulty + ". Type: " + interviewType + ". Evaluate the answer using a warm South African tone with phrases like eish, lekker, sharp, sho where natural. Be honest but encouraging.",
+      response_json_schema: {
+        type: "object",
+        properties: {
+          score: { type: "number" },
+          feedback_good: { type: "string" },
+          feedback_improve: { type: "string" },
+          suggested_answer: { type: "string" },
+        },
+      },
+    });
+
+    const fb = {
+      question: currentQuestion,
+      answer,
+      score: res.score || 5,
+      feedback_good: res.feedback_good || "Sharp effort!",
+      feedback_improve: res.feedback_improve || "Keep practising, you'll get there!",
+      suggested_answer: res.suggested_answer || "",
+    };
+
+    setFeedback(fb);
+    setAllResults((prev) => [...prev, fb]);
+    setPhase("feedback");
+    setLoading(false);
+    speak(`${fb.score >= 7 ? "Eish, lekker answer!" : "Yoh, okay"} — you scored ${fb.score} out of 10. ${fb.feedback_good}`);
+  };
+
+  const nextQuestion = () => {
+    window.speechSynthesis?.cancel();
+    if (currentQ + 1 >= TOTAL_QUESTIONS) {
+      const results = [...allResults];
+      const overall = Math.round((results.reduce((a, b) => a + b.score, 0) / results.length) * 10) / 10;
+      const sessionData = JSON.stringify({
+        user_name: userName, role, interview_type: interviewType, difficulty,
+        questions: results, overall_score: overall,
+      });
+      navigate(`/results?data=${encodeURIComponent(sessionData)}`);
+    } else {
+      const next = currentQ + 1;
+      setCurrentQ(next);
+      generateQuestion(next);
+    }
+  };
+
+  const toggleListening = () => {
+    if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
+      alert("Eish! Speech recognition isn't supported in this browser. Try Chrome, bra.");
+      return;
+    }
+    if (isListening) { recognitionRef.current?.stop(); setIsListening(false); return; }
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-ZA";
+    recognition.onresult = (event) => {
+      let transcript = "";
+      for (let i = 0; i < event.results.length; i++) transcript += event.results[i][0].transcript;
+      setAnswer(transcript);
+    };
+    recognition.onerror = () => setIsListening(false);
+    recognition.onend = () => setIsListening(false);
+    recognition.start();
+    recognitionRef.current = recognition;
+    setIsListening(true);
+  };
+
+  const handleTimeUp = useCallback(() => {
+    setTimerRunning(false);
+    if (answer.trim()) evaluateAnswer();
+  }, [answer]);
+
+  const getExpression = () => {
+    if (phase === "evaluating") return "thinking";
+    if (phase === "feedback" && feedback) {
+      if (feedback.score >= 8) return "impressed";
+      if (feedback.score >= 6) return "happy";
+      if (feedback.score >= 4) return "encouraging";
+      return "concerned";
+    }
+    if (phase === "greeting") return "happy";
+    return "neutral";
+  };
+
+  const PANEL_COLORS = { mel: "text-primary", thabo: "text-accent", zanele: "text-chart-3" };
+  const PANEL_BG = { mel: "bg-primary/15 border-primary/20", thabo: "bg-accent/15 border-accent/20", zanele: "bg-chart-3/15 border-chart-3/20" };
+
+  return (
+    <div className="min-h-screen bg-background relative overflow-hidden">
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,hsl(173_80%_50%/0.05),transparent_50%)]" />
+
+      <div className="relative z-10 h-screen flex flex-col md:flex-row">
+        {/* Panel Side */}
+        <div className="w-full md:w-[42%] flex flex-col items-center justify-center p-4 md:p-8 border-b md:border-b-0 md:border-r border-border bg-card/30 min-h-[32vh] md:min-h-0">
+          <div className="mb-2 text-xs font-medium text-muted-foreground uppercase tracking-widest">Interview Panel</div>
+          <PanelRow activePanelist={activePanelist} expression={getExpression()} speaking={isSpeaking} />
+
+          <div className="mt-6 flex items-center gap-4">
+            <Timer duration={120} running={timerRunning} onTimeUp={handleTimeUp} />
+            <div className="text-sm text-muted-foreground font-medium">Q{currentQ + 1}/{TOTAL_QUESTIONS}</div>
+          </div>
+
+          <div className="flex gap-2 mt-4">
+            {Array.from({ length: TOTAL_QUESTIONS }).map((_, i) => (
+              <div
+                key={i}
+                className={`w-2.5 h-2.5 rounded-full transition-all ${
+                  i < allResults.length ? "bg-primary" : i === currentQ ? "bg-primary/50 animate-pulse" : "bg-secondary"
+                }`}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Conversation Side */}
+        <div className="flex-1 flex flex-col min-h-0">
+          <div className="px-5 py-3 border-b border-border bg-card/50 backdrop-blur-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="font-semibold text-sm">{interviewType} Panel Interview</h2>
+                <p className="text-xs text-muted-foreground">{difficulty} · {role}</p>
+              </div>
+              <div className="text-xs text-muted-foreground bg-secondary px-3 py-1 rounded-full">{userName}</div>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4 md:p-5 space-y-3">
+            {messages.map((msg) => (
+              <div key={msg.id} className={`flex gap-2 ${msg.type === "user" ? "flex-row-reverse" : "flex-row"}`}>
+                {msg.type !== "user" && (
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-1 text-[10px] font-bold ${PANEL_BG[msg.panelist] || ""}`}>
+                    <span className={PANEL_COLORS[msg.panelist] || "text-primary"}>{(msg.panelist || "M")[0].toUpperCase()}</span>
+                  </div>
+                )}
+                <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed border ${
+                  msg.type === "user"
+                    ? "bg-primary/15 border-primary/20 text-foreground"
+                    : `bg-secondary/70 border-border text-foreground`
+                }`}>
+                  {msg.type !== "user" && (
+                    <span className={`text-[10px] font-semibold uppercase tracking-wide mr-2 ${PANEL_COLORS[msg.panelist] || "text-primary"}`}>
+                      {msg.panelist?.charAt(0).toUpperCase() + msg.panelist?.slice(1)}
+                    </span>
+                  )}
+                  {msg.text}
+                </div>
+              </div>
+            ))}
+
+            {loading && (
+              <div className="flex gap-2">
+                <div className="w-6 h-6 rounded-full bg-primary/15 border border-primary/20 flex items-center justify-center flex-shrink-0 mt-1">
+                  <span className="text-[10px] font-bold text-primary">M</span>
+                </div>
+                <div className="bg-secondary/70 border border-border rounded-2xl px-4 py-3 flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                  <span className="text-sm text-muted-foreground">
+                    {phase === "evaluating" ? "Panel is deliberating, just now..." : "Preparing next question..."}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <AnimatePresence>
+              {phase === "feedback" && feedback && (
+                <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="ml-8">
+                  <FeedbackCard feedback={feedback} />
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <div ref={chatEndRef} />
+          </div>
+
+          {/* Input */}
+          <div className="p-4 md:p-5 border-t border-border bg-card/50 backdrop-blur-sm">
+            {(phase === "asking" || phase === "answering") && !loading ? (
+              <div className="space-y-2">
+                <div className="relative">
+                  <Textarea
+                    placeholder="Type your answer or use the mic, sho..."
+                    value={answer}
+                    onChange={(e) => { setAnswer(e.target.value); setPhase("answering"); }}
+                    className="bg-secondary/50 border-border min-h-[72px] pr-12 resize-none"
+                  />
+                  <Button
+                    variant="ghost" size="icon" onClick={toggleListening}
+                    className={`absolute bottom-2 right-2 rounded-full ${isListening ? "bg-destructive/20 text-destructive" : "text-muted-foreground hover:text-primary"}`}
+                  >
+                    {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                  </Button>
+                </div>
+                <Button
+                  onClick={evaluateAnswer}
+                  disabled={!answer.trim()}
+                  className="w-full h-11 bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl font-medium"
+                >
+                  <Send className="w-4 h-4 mr-2" />
+                  Submit Answer
+                </Button>
+              </div>
+            ) : phase === "feedback" ? (
+              <Button
+                onClick={nextQuestion}
+                className="w-full h-11 bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl font-medium group"
+              >
+                {currentQ + 1 >= TOTAL_QUESTIONS ? "See Results, Sharp!" : "Next Question"}
+                <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
